@@ -1,0 +1,121 @@
+mysql -u retail_dba -h nn01.itversity.com -p
+
+sqoop list-databases \
+  --connect "jdbc:mysql://nn01.itversity.com:3306/retail_db" \
+  --username retail_dba \
+  --password itversity
+
+sqoop list-tables \
+  --connect "jdbc:mysql://nn01.itversity.com:3306/retail_db" \
+  --username retail_dba \
+  --password itversity
+
+sqoop eval \
+  --connect "jdbc:mysql://nn01.itversity.com:3306/retail_db" \
+  --username retail_dba \
+  --password itversity \
+  --query "select count(1) from order_items"
+
+sqoop eval \
+  --connect "jdbc:mysql://nn01.itversity.com:3306/retail_db" \
+  --username retail_dba \
+  --password itversity \
+  --query "select * from employees"  
+  
+  sqoop import-all-tables \
+  -m 12 \
+  --connect "jdbc:mysql://nn01.itversity.com:3306/retail_db" \
+  --username retail_dba \
+  --password itversity \
+  --as-avrodatafile \
+  --warehouse-dir=/user/hive/warehouse/retail_stage.db
+  
+--Default
+sqoop import \
+  --connect "jdbc:mysql://nn01.itversity.com:3306/retail_db" \
+  --username retail_dba \
+  --password itversity \
+  --table employees \
+  --as-textfile \
+  --target-dir=/user/debabratarc91/sqoop_imports/employee
+  
+sqoop import \
+  --connect "jdbc:mysql://nn01.itversity.com:3306/retail_db" \
+  --username retail_dba \
+  --password itversity \
+  --table departments \
+  --as-sequencefile \
+  --target-dir=/user/debabratarc91/sqoop_imports/employee1
+  
+  
+-- Dropping directories, in case your hive database/tables in consistent state
+hadoop fs -rm -R /user/hive/warehouse/departments
+
+-- Basic import
+sqoop import \
+  --connect "jdbc:mysql://nn01.itversity.com:3306/retail_db" \
+  --username retail_dba \
+  --password itversity \
+  --table departments \
+  --target-dir /user/cloudera/departments 
+  
+-- Boundary Query and columns
+sqoop import \
+  --connect "jdbc:mysql://nn01.itversity.com:3306/retail_db" \
+  --username retail_dba \
+  --password itversity \
+  --table departments \
+  --target-dir /user/cloudera/departments \
+  -m 2 \
+  --boundary-query "select 2, 8 from departments limit 1" \
+  --columns department_id,department_name
+  
+-- query and split-by
+sqoop import \
+  --connect "jdbc:mysql://nn01.itversity.com:3306/retail_db" \
+  --username retail_dba \
+  --password itversity \
+  --query="select * from orders join order_items on orders.order_id = order_items.order_item_order_id where \$CONDITIONS" \
+  --target-dir /user/cloudera/order_join \
+  --split-by order_id \
+  --num-mappers 4
+  
+-- Importing table with out primary key using multiple threads (split-by)
+-- When using split-by, using indexed column is highly desired
+-- If the column is not indexed then performance will be bad 
+-- because of full table scan by each of the thread
+sqoop import \
+  --connect "jdbc:mysql://nn01.itversity.com:3306/retail_db" \
+  --username retail_dba \
+  --password itversity \
+  --table departments \
+  --target-dir /user/hive/warehouse/retail_ods.db/departments \
+  --append \
+  --fields-terminated-by '|' \
+  --lines-terminated-by '\n' \
+  --split-by department_id \
+  --outdir java_files
+  
+ 
+ --Connect to mysql and create database for reporting database
+--user:root, password:cloudera
+mysql -u root -p
+create database deba_db;
+grant all on deba_db.* to retail_dba;
+flush privileges;
+use deba_db;
+create table departments as select * from retail_db.departments where 1=2;
+exit;
+  --For certification change database name deba_db to retail_db
+sqoop export --connect "jdbc:mysql://quickstart.cloudera:3306/deba_db" \
+       --username retail_dba \
+       --password itversity \
+       --table departments \
+       --export-dir /user/hive/warehouse/retail_ods.db/departments \
+       --input-fields-terminated-by '|' \
+       --input-lines-terminated-by '\n' \
+       --num-mappers 2 \
+       --batch \
+       --outdir java_files
+	   
+	   
