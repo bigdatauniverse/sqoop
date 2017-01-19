@@ -1,0 +1,229 @@
+******CloudX Labs version******
+
+Accessing MYSQL in CloudX Labs
+mysql -u sqoopuser -h ip-172-31-13-154 -p
+
+
+sqoop list-databases \
+  --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp
+
+sqoop list-tables \
+  --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp
+
+sqoop eval \
+  --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --query "select count(1) from order_items"
+
+sqoop eval \
+  --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --query "select * from employees"  
+  
+  sqoop import-all-tables \
+  -m 12 \
+  --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --as-avrodatafile \
+  --warehouse-dir=/user/hive/warehouse/retail_stage.db
+  
+--Default
+sqoop import \
+  --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --table departments  \
+  --as-textfile \
+  --target-dir=/user/debabratarc916674/debabrata/sqoop_imports/departments
+  
+sqoop import \
+  --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --table departments \
+  --as-sequencefile \
+  --target-dir=/user/debabratarc916674/debabrata/sqoop_imports/employee1
+  
+  
+-- Dropping directories, in case your hive database/tables in consistent state
+hadoop fs -rm -R /user/hive/warehouse/departments
+
+-- Basic import
+sqoop import \
+  --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --table departments \
+  --target-dir /user/cloudera/departments 
+  
+-- Boundary Query and columns
+sqoop import \
+  --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --table departments \
+  --target-dir /user/cloudera/departments \
+  -m 2 \
+  --boundary-query "select 2, 8 from departments limit 1" \
+  --columns department_id,department_name
+  
+-- query and split-by
+sqoop import \
+  --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --query="select * from orders join order_items on orders.order_id = order_items.order_item_order_id where \$CONDITIONS" \
+  --target-dir /user/cloudera/order_join \
+  --split-by order_id \
+  --num-mappers 4
+  
+-- Importing table with out primary key using multiple threads (split-by)
+-- When using split-by, using indexed column is highly desired
+-- If the column is not indexed then performance will be bad 
+-- because of full table scan by each of the thread
+sqoop import \
+  --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --table departments \
+  --target-dir /user/hive/warehouse/retail_ods.db/departments \
+  --append \
+  --fields-terminated-by '|' \
+  --lines-terminated-by '\n' \
+  --split-by department_id \
+  --outdir java_files
+  
+ 
+ --Connect to mysql and create database for reporting database
+--user:root, password:cloudera
+mysql -u root -p
+create database deba_db;
+grant all on deba_db.* to retail_dba;
+flush privileges;
+use deba_db;
+create table departments as select * from retail_db.departments where 1=2;
+exit;
+  --For certification change database name deba_db to retail_db
+  
+sqoop export --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+       --username sqoopuser \
+       --password NHkkP876rp \
+       --table departments_export \
+       --export-dir /user/debabratarc916674/debabrata/sqoop_imports/departments \
+       --num-mappers 4 \
+       --batch \
+       --outdir /user/debabratarc916674/debabrata/sqoop_exports_outdir/departments
+  
+  
+sqoop export --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+       --username sqoopuser \
+       --password NHkkP876rp \
+       --table departments \
+       --export-dir /user/hive/warehouse/retail_ods.db/departments \
+       --input-fields-terminated-by '|' \
+       --input-lines-terminated-by '\n' \
+       --num-mappers 2 \
+       --batch \
+       --outdir java_files
+	   
+
+sqoop export   --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --table departments \
+  --export-dir /user/cloudera/sqoop_import/departments_export \
+  --batch \
+  --outdir java_files \
+  -m 1 \
+  --update-key department_id \
+  --update-mode allowinsert
+
+sqoop export   --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --table departments_test \
+  --export-dir /user/hive/warehouse/departments_test \
+  --input-fields-terminated-by '\001' \
+  --input-lines-terminated-by '\n' \
+  --num-mappers 2 \
+  --batch \
+  --outdir java_files \
+  --input-null-string nvl \
+  --input-null-non-string -1
+
+--Merge process begins
+hadoop fs -mkdir /user/cloudera/sqoop_merge
+
+--Initial load
+sqoop import \
+    --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --table departments \
+  --as-textfile \
+  --target-dir=/user/cloudera/sqoop_merge/departments
+
+--Validate
+sqoop eval   --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --query "select * from departments" 
+
+hadoop fs -cat /user/cloudera/sqoop_merge/departments/part*
+
+--update
+sqoop eval   --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --query "update departments set department_name='Testing Merge' where department_id = 9000"
+
+--Insert
+sqoop eval   --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --query "insert into departments values (10000, 'Inserting for merge')"
+
+sqoop eval   --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --query "select * from departments"
+
+--New load
+sqoop import \
+    --connect "jdbc:mysql://ip-172-31-13-154/retail_db" \
+  --username sqoopuser \
+  --password NHkkP876rp \
+  --table departments \
+  --as-textfile \
+  --target-dir=/user/cloudera/sqoop_merge/departments_delta \
+  --where "department_id >= 9000"
+
+hadoop fs -cat /user/cloudera/sqoop_merge/departments_delta/part*
+
+--Merge
+sqoop merge --merge-key department_id \
+  --new-data /user/cloudera/sqoop_merge/departments_delta \
+  --onto /user/cloudera/sqoop_merge/departments \
+  --target-dir /user/cloudera/sqoop_merge/departments_stage \
+  --class-name departments \
+  --jar-file <get_it_from_last_import>
+
+hadoop fs -cat /user/cloudera/sqoop_merge/departments_stage/part*
+
+--Delete old directory
+hadoop fs -rm -R /user/cloudera/sqoop_merge/departments
+
+--Move/rename stage directory to original directory
+hadoop fs -mv /user/cloudera/sqoop_merge/departments_stage /user/cloudera/sqoop_merge/departments 
+
+--Validate that original directory have merged data
+hadoop fs -cat /user/cloudera/sqoop_merge/departments/part*
+
+--Merge process ends
